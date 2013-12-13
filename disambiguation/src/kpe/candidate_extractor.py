@@ -21,6 +21,9 @@ PATTERNS_ALT = r'''
 '''
 # ('2009', 'CD'), ('Grammy', 'NNP'), ('Awards', 'NNS')
 NP_CHUNCKER = RegexpParser(PATTERNS)
+EARLY_CANDIDATE_CUTOFF = 25
+LATE_CANDIDATE_CUTOFF = 10
+
 def extract_candidates(tagged_sentences):
     '''
     Returns three lists:
@@ -42,13 +45,11 @@ def extract_candidates(tagged_sentences):
             tree = NP_CHUNCKER.parse(ts)
             for leaf in sub_leaves(tree, 'NP'):
                 candidate = ' '.join(word for word, _ in leaf)   
-                #print candidate
                 candidate = remove_time_ref(candidate)   
                 candidate = remove_quantity_ref(candidate)                  
-                if valid_candidate(candidate): 
-                    candidates.append(candidate)
-                if pos  <= 3: early.add(candidate)
-                if pos >= num_sentences - 2: late.add(candidate)
+                if valid_candidate(candidate): candidates.append(candidate)
+                if pos  <= EARLY_CANDIDATE_CUTOFF: early.add(candidate)
+                if pos >= num_sentences - LATE_CANDIDATE_CUTOFF: late.add(candidate)
     return prune(candidates, num_sentences), early, late
 
 def add_alternative(pattern, alternative):
