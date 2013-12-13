@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 from scipy.cluster.hierarchy import linkage, dendrogram
-from scipy.sparse import csr_matrix, lil_matrix
+from scipy.sparse import csc_matrix, lil_matrix
 from sklearn.decomposition import TruncatedSVD
 from sklearn.preprocessing import Normalizer
 from sklearn.feature_extraction.text import TfidfTransformer
@@ -86,13 +86,16 @@ def get_sparse_matrix(home, directory, target, update=False):
   ncol = 2 * n_entities
   if update or not os.path.exists(path):
     S = lil_matrix((nrow, ncol))
+    print '1', S.shape
     for i, j, value in get_features(home, directory, target): S[i,j] = value
     #for i, j, value in features: S[i,j] = value
     S = S.tocsc()
+    print '2', S.shape
     np.savez(path, S.data, S.indices, S.indptr)
   else:
     npzfile = np.load(path)
-    S = csr_matrix((npzfile['arr_0'], npzfile['arr_1'], npzfile['arr_2']))
+    S = csc_matrix((npzfile['arr_0'], npzfile['arr_1'], npzfile['arr_2']), shape=(nrow, ncol))
+    print '3', S.shape
   finish = time.time()
   print '\ttook %0.3f s' % (finish-start)
   return S
@@ -133,7 +136,7 @@ home = "/home/disambiguation/"
 directory = "data-sets"
 target = "js-test"
 update_mention_data = False
-update_reduced_matrix = True
+update_reduced_matrix = False
 update_sparse_matrix = False
 components = 80
 use_tf_idf = True
@@ -145,6 +148,7 @@ if __name__ == "__main__":
   collect(home, directory, target, update_mention_data)
   S = get_sparse_matrix(home, directory, target, update_sparse_matrix)
   X = get_reduced_matrix(S, components, use_tf_idf, update_reduced_matrix)
+  print X.shape
   info = [(i, phrase) for i, phrase in get_info(home, directory, target)]
   indices = [i for i, phrase in info if surface_form in phrase]
   data = X[indices,:]
