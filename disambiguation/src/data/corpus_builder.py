@@ -1,129 +1,116 @@
 import codecs
-import numpy as np
+from gensim import corpora
+from nltk.tokenize import sent_tokenize, word_tokenize
+from nltk.corpus import stopwords
 from os.path import join
 from os import listdir
-from sklearn.utils import check_random_state
 
-class Bunch(dict):
-    """Container object for datasets: dictionary-like object that
-       exposes its keys as attributes."""
+class Document(object):
+  """Generic interface to a text document with an id."""        
+  def __init__(self, doc_id):
+    self.doc_id = doc_id
+    self.tokens = None
+    
+  def get_id(self):
+    """Returns the id of this document."""
+    return self.doc_id
+    
+  def get_text(self):
+    """Returns the text of this document."""
+    raise Exception("Method not implemented!")
+    
+  def get_tokens(self):
+    """Returns a list of the tokens of this document."""
+    if not self.tokens:
+      sentences = sent_tokenize(self.get_text().lower())
+      tokenized_sentences = [word_tokenize(x) for x in sentences] 
+      self.tokens = sum(tokenized_sentences, [])
+    return self.tokens
+    
+  def __str__(self):
+    return unicode(self).encode('utf-8')
+  
+  def __unicode__(self):
+    return "%s -->> %s" %(self.doc_id, self.get_text())
 
-    def __init__(self, **kwargs):
-        dict.__init__(self, kwargs)
-        self.__dict__ = self
-        
-def build_corpus(path, description=None, load_content=True, shuffle=True, 
-  encoding='utf-8', decode_error='strict', random_state=0):
-  """Load text files from a directory with the given path.
-  
-  This function does not try to extract features into a numpy array or
-  scipy sparse matrix. In addition, if load_content is false it
-  does not try to load the files in memory.
-  
-  If you set load_content=True, you should also specify the encoding of
-  the text using the 'encoding' parameter. For many modern text files,
-  'utf-8' will be the correct encoding. If you leave encoding equal to None,
-  then the content will be made of bytes instead of Unicode, and you will
-  not be able to use most functions in `sklearn.feature_extraction.text`.
-  
-  Parameters
-  ----------
-  path : string or unicode
-      Path to the folder holding the data
-  
-  description: string or unicode, optional (default=None)
-      A paragraph describing the characteristics of the dataset: its source,
-      reference, etc.
-  
-  load_content : boolean, optional (default=True)
-      Whether to load or not the content of the different files. If
-      true a 'data' attribute containing the text information is present
-      in the data structure returned. If not, a filenames attribute
-      gives the path to the files.
-  
-  encoding : string or None (default is 'utf-8')
-      If None, do not try to decode the content of the files (e.g. for
-      images or other non-text content).
-      If not None, encoding to use to decode text files to Unicode if
-      load_content is True.
-  
-  decode_error: {'strict', 'ignore', 'replace'}, optional
-      Instruction on what to do if a byte sequence is given to analyze that
-      contains characters not of the given `encoding`. Passed as keyword
-      argument 'errors' to bytes.decode.
-  
-  shuffle : bool, optional (default=True)
-      Whether or not to shuffle the data: might be important for models that
-      make the assumption that the samples are independent and identically
-      distributed (i.i.d.), such as stochastic gradient descent.
-  
-  random_state : int, RandomState instance or None, optional (default=0)
-      If int, random_state is the seed used by the random number generator;
-      If RandomState instance, random_state is the random number generator;
-      If None, the random number generator is the RandomState instance used
-      by `np.random`.
-  
-  Returns
-  -------
-  data : Bunch
-      Dictionary-like object, the interesting attributes are: either
-      data, the raw text data, or 'filenames', the files
-      holding it, and 'DESCR', the full description of the dataset.
-  """
-  filenames = [join(path, d) for d in sorted(listdir(path))]
-  # convert to array for fancy indexing
-  filenames = np.array(filenames)  
-  if shuffle:
-    random_state = check_random_state(random_state)
-    indices = np.arange(filenames.shape[0])
-    random_state.shuffle(indices)
-    filenames = filenames[indices] 
-  if load_content:
-    ids = []
-    documents = []
-    for filename in filenames:
-      document_id = filename.strip().split("/")[-1]
-      document = codecs.open(filename, 'r', 'UTF-8').read()
-      ids.append(document_id.strip())
-      documents.append(document.strip())
-      return Bunch(filenames=filenames, ids=ids, documents=documents, description=description)
-  return Bunch(filenames=filenames, description=description)
+class TextBackedDocument(Document):
+  """Simple text backed document."""        
 
+  def __init__(self, doc_id, doc_text):
+    super(TextBackedDocument, self).__init__(doc_id)
+    self.doc_text = doc_text
+    
+  def get_text(self):
+    """Returns the text of this document."""
+    return self.doc_text
+
+class FileBackedDocument(Document):
+  """Simple file backed document."""        
+
+  def __init__(self, doc_id, doc_path, store_content=False):
+    super(FileBackedDocument, self).__init__(doc_id)
+    self.doc_path = doc_path
+    self.store_content = store_content
+    if self.store_content: self.text = codecs.open(self.doc_path, 'r', 'UTF-8').read()
+    
+  def get_text(self):
+    """Returns the text of this document."""
+    if self.store_content: return self.text
+    return codecs.open(self.doc_path, 'r', 'UTF-8').read()
+
+class Corpus(object):
+  """Generic BOW corpus."""
+
+  def __init__(self, description, no_below=4, no_above=0.5, keep_n=2500):
+    self.description = description
+    self.no_below = no_below
+    self.no_above = no_above
+    self.keep_n = keep_n
+    self.dictionary = None
+    self.documents = []
         
-def build_context_corpus(path, description=None, encoding='utf-8'):
-  """Load context data from a file with the given path. Each line of
-  the file contains a doc id and text separated by a tab.
-  
-  Parameters
-  ----------
-  path : string or unicode
-      Path to the file holding the data
-  
-  description: string or unicode, optional (default=None)
-      A paragraph describing the characteristics of the dataset: its source,
-      reference, etc.
+  def initialize_dictionary(self):
+    texts = [[token for token in document.get_tokens() if len(token) > 1] for document in self.documents]
+    dictionary = corpora.Dictionary(texts)
+    stopword_ids = [dictionary.token2id[word] for word in stopwords.words('english') if word in dictionary.token2id]
+    dictionary.filter_tokens(bad_ids=stopword_ids)
+    dictionary.filter_extremes(no_below=self.no_below, no_above=self.no_above, keep_n=self.keep_n)
+    dictionary.compactify()
+    self.dictionary = dictionary
         
-  encoding : string or None (default is 'utf-8')
-      If None, do not try to decode the content of the files (e.g. for
-      images or other non-text content).
-      If not None, encoding to use to decode text files to Unicode if
-      load_content is True.
+  def __iter__(self):
+    if not self.dictionary: self.initialize_dictionary()
+    for document in self.documents:
+      yield self.dictionary.doc2bow(document.get_tokens())
+    
+  def __str__(self):
+    documents = [str(document) for document in self.documents[:11]]
+    documents.append("...")
+    #documents.extend([str(document) for document in self.documents[-2:]])
+    return "%s:\n\t%s" % (self.description, "\n\t".join(documents))
   
-  Returns
-  -------
-  data : Bunch
-      Dictionary-like object with the following attributes:
-        ids: an array of the document ids;
-        documents: and array of the text documents;
-        description: a description of the dataset.
-  """
-  data = codecs.open(path, 'r', 'UTF-8')
-  ids = []
-  documents = []
-  for line in data: 
-    line = line.strip()
-    if line:
-      document_id, document = line.split("\t")
-      ids.append(document_id.strip())
-      documents.append(document.strip())
-  return Bunch(ids=ids, documents=documents, description=description)
+  def __len__(self): return len(self.documents)
+  
+class FileBackedCorpus(Corpus):
+  """File backed BOW corpus, with one document per line."""
+
+  def __init__(self, path, description, no_below=4, no_above=0.5, keep_n=2500):
+    super(FileBackedCorpus, self).__init__(description, no_below, no_above, keep_n)
+    self.path = path
+    data = codecs.open(path, 'r', 'UTF-8')
+    self.documents = []
+    for line in data: 
+      line = line.strip()
+      if line:
+        doc_id, doc_text = line.split("\t")
+        self.documents.append(TextBackedDocument(doc_id, doc_text))
+
+class DirectoryBackedCorpus(Corpus):
+  """Directory backed BOW corpus."""
+
+  def __init__(self, path, description, no_below=4, no_above=0.5, keep_n=2500, store_content=False):
+    super(DirectoryBackedCorpus, self).__init__(description, no_below, no_above, keep_n)
+    self.path = path
+    self.documents = []
+    for d in sorted(listdir(path)):
+      self.documents.append(FileBackedDocument(d, join(path, d), store_content))
