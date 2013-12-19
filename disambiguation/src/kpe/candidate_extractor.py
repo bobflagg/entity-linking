@@ -221,6 +221,7 @@ def contains_url(candidate):
     return False
 
 VALIDITY_CHECKS = [begins_with_bad_string, contains_bad_string, contains_url, is_amount, is_date, is_stopword, is_time]  
+VALIDITY_CHECKS = []  
 def valid_candidate(candidate):
     '''
     Returns True if the given candidate key concept is valid; otherwise,

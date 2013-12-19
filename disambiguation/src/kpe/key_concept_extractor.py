@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
 '''
 Tools for extracting key concepts from a document.
+
+sudo apt-get install python-pygraph
+in virtual env
+http://www.installion.co.uk/ubuntu/raring/universe/p/python-pygraph/remove.html
 '''
 from collections import defaultdict
 from pygraph.classes.digraph import digraph
@@ -139,16 +143,3 @@ class WordGraph(object):
             if diff < min_delta:
                 break
         return ranker
-
-import codecs
-from os.path import join
-from os import listdir
-
-path = "/opt/disambiguation/data/jr-docs"
-filenames = [join(path, d) for d in sorted(listdir(path))]
-for file in filenames:
-  try:
-    text = data = codecs.open(file, 'r', 'Windows-1252').read()
-  except:
-    text = data = codecs.open(file, 'r', 'UTF-8').read()    
-  print extract_kc(text)
