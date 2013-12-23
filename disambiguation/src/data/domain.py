@@ -59,7 +59,7 @@ class FeatureSet(object):
     
   def record(self):
     index = self.entity.index
-    return "%d:%.2f\t%d:%d" % (index, self.proximity, Entity.NEXT_INDEX + index, self.freq)
+    return "p:%d:%.2f\tc:%d:%d" % (index, self.proximity, index, self.freq)
     
   def __str__(self):
     return unicode(self).encode('utf-8')

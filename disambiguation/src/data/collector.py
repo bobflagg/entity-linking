@@ -18,10 +18,14 @@ import time
 OUTPUT_DIRECTORY = "output"
 
 def collect(home, directory, target, output_directory, update):
-  print "Collecting mentions data..."
+  '''
+  Collects and stores entities and mentions together with count and
+  proximity features for each mention.
+  '''
   start = time.time()
   path = "%s/mention" % output_directory
   if update or not os.path.exists(path):
+    print "Collecting mentions data..."
     data = codecs.open("%s/%s/%s-data" % (home, directory, target), 'r', 'UTF-8')
     doc_id = None
     mention = None
@@ -58,6 +62,7 @@ def collect(home, directory, target, output_directory, update):
     fp = codecs.open("%s/shape" % output_directory, 'w', 'utf-8')
     fp.write("%d\t%d\n" % (index, Entity.NEXT_INDEX))
     fp.close()
+  else: print "Mentions data appears to be up-to-date."
   finish = time.time()
   print '\ttook %0.3f s' % (finish-start)
 
@@ -72,13 +77,18 @@ def store_mention_data(mention, index, fpc, fpl, fpm):
   fpl.write("%d\t%s\n" % (index, mention.info()))
 
 def get_features(output_directory):
+  '''
+  Generates entity count and entity proximity features for all mentions.
+  '''
+  _, ncol = get_shape(output_directory)
   fp = codecs.open("%s/mention" % output_directory, 'r', 'utf-8')
   for record in fp:
     parts = record.strip().split("\t")
     i = int(parts[0])
     for item in parts[1:]:
-      j, value = item.split(":")
+      t, j, value = item.split(":")
       j = int(j)
+      if t == 'p': j = ncol  + int(j)
       value = float(value)
       yield i, j, value
   fp.close()
@@ -185,13 +195,13 @@ def extract_topic_features(home, output_directory, target, num_topics, no_below=
   return dictionary, lda, corpus_lda
 
 def get_sparse_matrix(output_directory, context_corpus_tfidf, n_context_features, document_corpus_lda, num_topics, keyphrase_corpus, update=False):
-  print "Getting sparse matrix..."
   start = time.time()
   path = "%s/sparse.npz" % output_directory
   _, ncol_kf = get_shape(output_directory, path="keyphrase-shape")
   nrow, n_entities = get_shape(output_directory)
   ncol = 2 * n_entities + n_context_features + num_topics + ncol_kf
   if update or not os.path.exists(path):
+    print "Updating sparse matrix..."
     S = lil_matrix((nrow, ncol))
     # basic features: entity coreference and proximity
     for i, j, value in get_features(output_directory): S[i,j] = value
@@ -218,6 +228,7 @@ def get_sparse_matrix(output_directory, context_corpus_tfidf, n_context_features
     #   row = S.indices[i]     
     S = S.tocsc()
     np.savez(path, S.data, S.indices, S.indptr)
+  else: print "Loading sparse matrix..."
   npzfile = np.load(path)
   S = csc_matrix((npzfile['arr_0'], npzfile['arr_1'], npzfile['arr_2']), shape=(nrow, ncol))
   finish = time.time()
@@ -225,15 +236,16 @@ def get_sparse_matrix(output_directory, context_corpus_tfidf, n_context_features
   return S
 
 def get_reduced_matrix(output_directory, X, components, use_tf_idf, update=False):
-  print "Getting reduced matrix..."
   start = time.time()
   path = "%s/reduced.npz" % output_directory
   if update or not os.path.exists(path):
+    print "Building and storing reduced matrix..."
     if use_tf_idf: X = tf_idf(X)
     lsa = TruncatedSVD(components)
     X = lsa.fit_transform(X)
     X = Normalizer(copy=False).fit_transform(X)
     np.savez(path, X)
+  else: print "Loading reduced matrix..."
   npzfile = np.load(path)
   X = npzfile['arr_0']
   finish = time.time()
@@ -264,10 +276,10 @@ if __name__ == "__main__":
   parser.add_option("-t", help="Update topic features", dest='update_topic_features', default=False, action='store_true')
   parser.add_option("-k", help="Update keyphrasefeatures", dest='update_keyphrase_features', default=False, action='store_true')
   parser.add_option("-r", help="Update reduced matrix", dest='update_reduced_matrix', default=False, action='store_true')
+  parser.add_option("-s", help="Update sparse matrix", dest='update_sparse_matrix', default=False, action='store_true')
   (opts, args) = parser.parse_args()
-  update_sparse_matrix = False
-  if opts.update_mentions_data or opts.update_context_features or opts.update_topic_features or opts.update_keyphrase_features: update_sparse_matrix = True
-  if update_sparse_matrix: opts.update_reduced_matrix = True
+  if opts.update_mentions_data or opts.update_context_features or opts.update_topic_features or opts.update_keyphrase_features: opts.update_sparse_matrix = True
+  if opts.update_sparse_matrix: opts.update_reduced_matrix = True
   use_tf_idf = True
   # Read configuration info:
   if len(args) == 1: config_path = args[0]
@@ -295,7 +307,7 @@ if __name__ == "__main__":
   #	- keyphrase
   keyphrase_corpus = extract_keyphrase_features(home, output_directory, target, update=opts.update_keyphrase_features)
   #	- sparse matrix
-  S = get_sparse_matrix(output_directory, context_corpus_tfidf, len(context_dictionary), list(document_corpus_lda), num_topics, keyphrase_corpus, update=update_sparse_matrix)
+  S = get_sparse_matrix(output_directory, context_corpus_tfidf, len(context_dictionary), list(document_corpus_lda), num_topics, keyphrase_corpus, update=opts.update_sparse_matrix)
   #	- reduced matrix
   number_of_components = config.getint('dimensionality-reduction','number-of-components')
   X = get_reduced_matrix(output_directory, S, number_of_components, use_tf_idf, update=opts.update_reduced_matrix)
