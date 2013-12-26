@@ -33,7 +33,7 @@ class Info(object):
     return unicode(self).encode('utf-8')
   
   def __unicode__(self):
-    return "[%d] %s\t%s" % (self.index, self.phrase, self.document_name)
+    return "[%d] %s\t%s [%d]" % (self.index, self.phrase, self.document_name, self.document_index)
 
 class EntityCountFeature(object):
   def __init__(self, entity, count):
@@ -72,7 +72,13 @@ class Mention(object):
         self.entity_proximity_features.append(EntityProximityFeature(entities[j], value))
       else:
         self.entity_count_features.append(EntityCountFeature(entities[j], value))
-    
+
+  def set_keyphrase_info(self, indices_map):
+    self.keyphrase_indices = indices_map[self.info.document_name]
+
+  def set_topic_info(self, corpus_transformed):
+    self.topic_distribution = corpus_transformed[self.info.document_index]
+
   def __str__(self):
     return unicode(self).encode('utf-8')
   
@@ -83,3 +89,19 @@ class Mention(object):
         
   def get_phrase(self):
         return self.info[index]
+
+class Topic(object):
+  def __init__(self, index, model, n_top=3):
+    self.index = index
+    self.words = []
+    self.probs = []
+    for prob, word in model.show_topic(index)[:n_top]:
+      self.words.append(word)
+      self.probs.append(prob)
+   
+  def __str__(self):
+    return unicode(self).encode('utf-8')
+  
+  def __unicode__(self):
+    return "{%s}" % ", ".join(self.words)
+

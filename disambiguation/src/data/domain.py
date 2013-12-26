@@ -13,8 +13,9 @@ class Mention(object):
   MENTIONS = []
   NEXT_INDEX = 0
 
-  def __init__(self, doc_id, encoding, context, subtype=SUBTYPES.PERSON):
+  def __init__(self, doc_id, doc_name, encoding, context, subtype=SUBTYPES.PERSON):
     self.doc_id = doc_id
+    self.doc_name = doc_name
     self.context = context
     phrase, position = encoding.split(":")
     self.subtype = subtype
@@ -29,7 +30,7 @@ class Mention(object):
       if subtype in SUBTYPES: self.featureSets.append(FeatureSet(item))
     
   def info(self):
-    results = ["%s\t%s\t%s\t%d" % (self.doc_id, self.subtype, self.phrase, self.position)]
+    results = ["%s\t%s\t%s\t%d" % (self.doc_name, self.subtype, self.phrase, self.position)]
     return "\t".join(results)
     
   def record(self):

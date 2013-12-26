@@ -10,7 +10,7 @@ class ClusterModel(object):
     raise Exception("Method not implemented!")
 
   def score(self, data):
-    return {'description':'Silhouette Coefficient', 'value': metrics.silhouette_score(data, self.labels, metric='euclidean')}
+    return {'description':'Silhouette Coefficient', 'value': metrics.silhouette_score(data, self.labels(), metric='euclidean')}
 
   def visualize(self):
     raise Exception("Method not implemented!")
@@ -29,7 +29,7 @@ class KMeansClusterModel(ClusterModel):
     self.model.fit(data)
 
   def labels(self, threshold=None):
-    return model.labels_
+    return self.model.labels_
 
   def score(self, data):
     return {'description':'Silhouette Coefficient', 'value': metrics.silhouette_score(data, self.model.labels_, metric='euclidean')}

@@ -1,3 +1,6 @@
+'''
+Various methods for preprocessing mentions data in preparation for clustering and disambiguation.
+'''
 import codecs
 import ConfigParser
 from data.corpus_builder import DirectoryBackedCorpus, FileBackedCorpus
@@ -41,10 +44,11 @@ def collect(home, directory, target, output_directory, update):
           doc_id, path = line.split(":")
           doc_id = doc_id.strip()
           path = path.strip()[1:-1]
+          doc_name = path.split('/')[-1]
           finished_doc = False
         else:
           data = line.split('\t')
-          mention = Mention(doc_id, data[0], data[-1])
+          mention = Mention(doc_id, doc_name, data[0], data[-1])
           mention.add_featureSets(data[1:-1])
           store_mention_data(mention, index, fpc, fpl, fpm)
           index += 1
@@ -315,5 +319,5 @@ if __name__ == "__main__":
   info = [(i, phrase) for i, _, phrase in get_info(output_directory)]
   indices = [i for i, phrase in info if surface_form in phrase]
   data = X[indices,:]
-  indices  = np.array(indices )
+  indices  = np.array(indices)
   np.savez("%s/data.npz" % output_directory, data, indices)
