@@ -62,6 +62,9 @@ class FeatureSet(object):
     index = self.entity.index
     return "p:%d:%.2f\tc:%d:%d" % (index, self.proximity, index, self.freq)
     
+  def to_dict(self):
+    return {'subtype':self.subtype, 'entity':self.entity.phrase, 'proximity':round(self.proximity,3), 'frequency':self.freq}
+     
   def __str__(self):
     return unicode(self).encode('utf-8')
   

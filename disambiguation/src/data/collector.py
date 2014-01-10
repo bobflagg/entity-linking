@@ -1,5 +1,46 @@
 '''
-Various methods for preprocessing mentions data in preparation for clustering and disambiguation.
+collector.py
+
+Pre-processes entity mention data by extracting features and applying truncated SVD to reduce the dimension of the
+corresponding mention-feature matrix, storing intermediate results in flat files in an output directory for the specific
+entity.
+
+Usage:
+  python collector.py <path to config file> [options]
+for example:
+  python collector.py /home/disambiguation/config/js.cfg -t
+Available options are:
+  
+    -m          Update mentions data
+    -c          Update context features
+    -t          Update topic features
+    -k          Update keyphrase features
+    -r          Update reduced matrix
+    -s          Update sparse matrix
+  
+Currently, there is one configuration file for each entity; for example,
+for "John Smith" the file is 
+	/home/disambiguation/config/js.cfg  
+This file sets various parameters for the feature extraction process.  You'll probably 
+only need to change the following:
+  home: the root directory for feature extraction;
+  data-directory: the directory below home, which contains the data and documents
+                  for feature extraction;
+  target: the specific data set to process
+  surface-form: the form to use when filtering mentions
+
+For example, with the settings
+  home: /home/disambiguation
+  data-directory: data-sets
+  target: js-1000
+  surface-form: Smith
+the data at
+  /home/disambiguation/data-sets/js-1000-data
+and the documents in 
+  /home/disambiguation/data-sets/js-1000-docs
+will be used in feature extraction and the results will be stored in the directory
+  /home/disambiguation/output/js-1000
+
 '''
 import codecs
 import ConfigParser
@@ -175,6 +216,28 @@ def extract_keyphrase_features(home, output_directory, target, update=False):
   finish = time.time()
   print '\ttook %0.3f s' % (finish-start)
   return kp_corpus
+
+def build_topic_model(home, output_directory, target, num_topics, no_below=2, no_above=0.5, update=False):
+  print "Building topic model..."
+  start = time.time()
+  path = '/%s/document-lda.mm' % output_directory
+  if update or not os.path.exists(path):
+    corpus_path = "%s/data-sets/%s-doc" % (home, target)
+    description = "%s corpus" % target
+    corpus = DirectoryBackedCorpus(corpus_path, description, no_below=no_below, no_above=no_above)
+    corpus.initialize_dictionary()
+    corpus.dictionary.save('/%s/document.dict' % output_directory)
+    corpora.MmCorpus.serialize('/%s/document.mm' % output_directory, corpus)
+    lda = models.ldamodel.LdaModel(corpus, id2word=corpus.dictionary, num_topics=num_topics)
+    lda.save('/%s/document.lda' % output_directory)
+    corpus_lda = lda[corpus]
+    corpora.MmCorpus.serialize(path, corpus_lda)
+  dictionary = corpora.Dictionary.load('/%s/document.dict' % output_directory)
+  lda = models.ldamodel.LdaModel.load('/%s/document.lda' % output_directory)
+  corpus_lda = corpora.MmCorpus(path)
+  finish = time.time()
+  print '\ttook %0.3f s' % (finish-start)
+  return dictionary, lda, corpus_lda
 
 def extract_topic_features(home, output_directory, target, num_topics, no_below=2, no_above=0.5, update=False):
   print "Extracting topic features..."

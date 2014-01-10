@@ -1,3 +1,15 @@
+'''
+1. activate the appropriate Python environment:
+                source /home/disambiguation/venv/bin/activate
+2. update your Python path:
+                export PYTHONPATH=/home/disambiguation/entity-linking/disambiguation/src
+3. move to the directory containing the collector script:
+               cd /home/disambiguation/entity-linking/disambiguation/src
+4. run the script:
+               python disambiguator.py <path to config file>
+  for example:
+               python disambiguator.py /home/disambiguation/config/js-test.cfg
+'''
 import codecs
 import ConfigParser
 from data.collector import get_output_directory
@@ -222,4 +234,5 @@ if __name__ == "__main__":
 # python collector.py /home/disambiguation/config/jr.cfg -m -r -s
 # python disambiguator.py /home/disambiguation/config/jr.cfg
 # python disambiguator.py /home/disambiguation/config/js.cfg
+# python disambiguator.py /home/disambiguation/config/js-test.cfg
 

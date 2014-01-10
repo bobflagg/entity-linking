@@ -27,11 +27,34 @@ class Document(object):
       self.tokens = sum(tokenized_sentences, [])
     return self.tokens
     
+  def get_context(self, surface_form, window_radius=50):
+    """Returns the list of the tokens in this document appearing in a window 
+    with the given width and centered at the first occurrence of the given surface form,
+    if the form appears in this document; otherwise, the empty list."""
+    words = word_tokenize(surface_form.lower())
+    nwords = len(words)
+    tokens = self.get_tokens()
+    position = 0
+    while position + nwords <= len(tokens):
+      if tokens[position:position + nwords] == words:
+        return tokens[position - window_radius : position + nwords  + window_radius]
+      position += 1
+    return []
+    
   def __str__(self):
     return unicode(self).encode('utf-8')
   
   def __unicode__(self):
     return "%s -->> %s" %(self.doc_id, self.get_text())
+
+class LabeledDocument(Document):
+  """Generic interface to a text document with an id and a label."""        
+  def __init__(self, doc_id, label):
+    super(LabeledDocument, self).__init__(doc_id)
+    self.label = label
+  
+  def __unicode__(self):
+    return "%s [%s] -->> %s" %(self.doc_id, self.label, self.get_text())
 
 class TextBackedDocument(Document):
   """Simple text backed document."""        
@@ -44,11 +67,49 @@ class TextBackedDocument(Document):
     """Returns the text of this document."""
     return self.doc_text
 
+class LabeledTextBackedDocument(LabeledDocument):
+  """Simple text backed labeled document."""        
+
+  def __init__(self, doc_id, label, doc_text):
+    super(LabeledTextBackedDocument, self).__init__(doc_id, label)
+    self.doc_text = doc_text
+    
+  def get_text(self):
+    """Returns the text of this document."""
+    return self.doc_text
+
+class LabeledListBackedDocument(LabeledDocument):
+  """Simple text backed labeled document."""        
+
+  def __init__(self, doc_id, label, tokens):
+    super(LabeledListBackedDocument, self).__init__(doc_id, label)    
+    self.doc_text = None
+    self.tokens = tokens
+    
+  def get_text(self):
+    """Returns the text of this document."""
+    if not self.doc_text: self.doc_text = " ".join(self.tokens)
+    return self.doc_text
+
 class FileBackedDocument(Document):
   """Simple file backed document."""        
 
   def __init__(self, doc_id, doc_path, store_content=False):
     super(FileBackedDocument, self).__init__(doc_id)
+    self.doc_path = doc_path
+    self.store_content = store_content
+    if self.store_content: self.text = codecs.open(self.doc_path, 'r', 'UTF-8').read()
+    
+  def get_text(self):
+    """Returns the text of this document."""
+    if self.store_content: return self.text
+    return codecs.open(self.doc_path, 'r', 'UTF-8').read()
+
+class FileBackedLabeledDocument(LabeledDocument):
+  """Simple file backed document."""        
+
+  def __init__(self, doc_id, doc_path, label, store_content=False):
+    super(FileBackedLabeledDocument, self).__init__(doc_id, label)
     self.doc_path = doc_path
     self.store_content = store_content
     if self.store_content: self.text = codecs.open(self.doc_path, 'r', 'UTF-8').read()
@@ -114,3 +175,35 @@ class DirectoryBackedCorpus(Corpus):
     self.documents = []
     for d in sorted(listdir(path)):
       self.documents.append(FileBackedDocument(d, join(path, d), store_content))
+
+
+class CollectionBackedCorpus(Corpus):
+  """Labeled document collection backed BOW corpus."""
+
+  def __init__(self, documents, description, no_below=4, no_above=0.5, keep_n=2500, store_content=False):
+    super(CollectionBackedCorpus, self).__init__(description, no_below, no_above, keep_n)
+    self.documents = documents
+
+class LabeledCorpus(DirectoryBackedCorpus):
+  """Directory backed labeled BOW corpus."""
+
+  def __init__(self, path, description, no_below=4, no_above=0.5, keep_n=2500, store_content=False):
+    super(LabeledCorpus, self).__init__(path, description, no_below, no_above, keep_n)
+    self.path = path
+    self.documents = []
+    for d in sorted(listdir(path)):
+	directory = join(path, d)
+	for f in sorted(listdir(directory)):
+      		self.documents.append(FileBackedLabeledDocument(f, join(directory , f), d, store_content))
+  
+def build_discrimination_corpus(path, form):
+  corpus = LabeledCorpus(path, "%s corpus" % form, store_content=True)	
+  texts = [document.get_context(form) for document in corpus.documents]
+  documents = []
+  position = 0
+  for text in texts:
+    document = corpus.documents[position]
+    documents.append(LabeledListBackedDocument(document.doc_id, document.label, text))
+    position += 1
+  return CollectionBackedCorpus(documents, "%s context corpus" % form)
+	
