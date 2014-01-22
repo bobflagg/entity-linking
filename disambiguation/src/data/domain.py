@@ -1,6 +1,7 @@
 '''
 Classes to support ETL.
 '''
+import re
 
 class Enum(set):
     def __getattr__(self, name):
@@ -48,7 +49,8 @@ class Mention(object):
   
 class FeatureSet(object):
   
-  def __init__(self, item_data): # u'PERSON:Brent Cann:0.777777777778:1'
+  def __init__(self, doc_id, item_data): # u'PERSON:Brent Cann:0.777777777778:1'
+    self.doc_id = doc_id
     subtype, phrase, proximity, freq = item_data.split(':')
     self.entity = Entity.get_entity(subtype, phrase)
     self.subtype = self.entity.subtype
@@ -63,7 +65,7 @@ class FeatureSet(object):
     return "p:%d:%.2f\tc:%d:%d" % (index, self.proximity, index, self.freq)
     
   def to_dict(self):
-    return {'subtype':self.subtype, 'entity':self.entity.phrase, 'proximity':round(self.proximity,3), 'frequency':self.freq}
+    return {'doc_id':self.doc_id, 'subtype':self.subtype, 'entity':self.entity.phrase, 'proximity':round(self.proximity,3), 'frequency':self.freq}
      
   def __str__(self):
     return unicode(self).encode('utf-8')
@@ -78,7 +80,7 @@ class Entity(object):
     
   @classmethod
   def get_entity(cls, subtype, phrase):
-    phrase = phrase.strip().lower()
+    phrase = re.sub(r'\s+', ' ', phrase.strip().lower())
     subtype = subtype.strip().upper()
     key = "%s:%s" % (subtype, phrase)
     if key in Entity.MAP: return cls.MAP[key]
@@ -89,7 +91,7 @@ class Entity(object):
     return entity
   
   def __init__(self, subtype, phrase, index):
-    self.phrase = phrase.strip().lower()
+    self.phrase = re.sub(r'\s+', ' ', phrase.strip().lower())
     self.subtype = subtype.strip().upper()
     self.key = "%s:%s" % (self.subtype, self.phrase)
     self.index = index

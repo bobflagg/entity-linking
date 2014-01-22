@@ -1,8 +1,10 @@
 '''
 1. update your Python path:
   export PYTHONPATH=/home/disambiguation/entity-linking/disambiguation/src
+  export PYTHONPATH=/opt/disambiguation/entity-linking/disambiguation/src
 2. move to the directory containing the collector script:
   cd /home/disambiguation/entity-linking/disambiguation/src/kb
+  cd /opt/disambiguation/entity-linking/disambiguation/src/kb
 3. run the script:
   python kb_populator.py <path to config file> [options]
 for example:
@@ -85,37 +87,67 @@ def build_context_vector_space_model(home, config, update=False):
   else:
     print "Ambient context vector space model appears to be up-to-date."
 
-def collect_entity_surface_form_data(directory, document_count_map, mention_count_map):
+def collect_entity_surface_form_data(directory, sf_data):
   '''
   Collects and stores all surface forms appearing in feature entity kb files.
   '''
   path = "%s/features-entities.json" % directory
+  print path
   fp = codecs.open(path, 'r', 'UTF-8')
   data = simplejson.load(fp)
+  doc_ids = set()
   for item in data:
     subtype = item['subtype']
-    if subtype in SUBTYPES: print item
+    doc_id = item['doc_id']
+    doc_ids.add(doc_id) 
+    if not doc_id in sf_data['doc-sfs']: 
+      sf_data['doc-sfs'][doc_id] = set()
+      sf_data['doc-index-map'][doc_id] = sf_data['next-doc-index']
+      sf_data['next-doc-index'] += 1
+    if subtype in SUBTYPES: 
+      cofereference = "%s::%s" % (subtype, item['entity'])
+      if not cofereference in sf_data['sf-index-map']: 
+        sf_data['sf-docs'][cofereference] = set()
+        sf_data['sf-index-map'][cofereference] = sf_data['next-sf-index']
+        sf_data['next-sf-index'] += 1
+      sf_data['doc-sfs'][doc_id].add(sf_data['sf-index-map'][cofereference])
+      sf_data['sf-docs'][cofereference].add(sf_data['doc-index-map'][doc_id])
   fp.close()
+  ndocs = len(list(doc_ids))
+  print "\t%d" % ndocs
+  return ndocs
 
 def collect_surface_form_data(home, config, update=False):
   '''
   Collects and stores surface form for all specified (with a search pattern) entities.
   '''
-  path = '%s/output/surface-forms.txt' % home
-  if update or not os.path.exists(path):
+  path = '%s/output/entity/surface-form-data.txt' % home
+  #if update or not os.path.exists(path):
+  if True:
     print "Collecting and storing KB surface forms."
     start = time.time()
-    document_count_map = {}
-    mention_count_map = {}
+    sf_data = {'next-sf-index':0, 'sf-index-map':{}, 'next-doc-index':0, 'doc-index-map':{}, 'doc-sfs':{}, 'sf-docs':{}}
     # process all entities
     search_pattern = "%s/output/entity/%s" % (home, config.get('surface-form','search-pattern'))
+    ndocs = 0
     for directory in glob.glob(search_pattern):
-      collect_entity_surface_form_data(directory, document_count_map, mention_count_map)  
-      break  
+      ndocs += collect_entity_surface_form_data(directory, sf_data)  
+    print "ndocs: %d" % ndocs
+    for doc_id in sf_data['doc-sfs'].keys():
+      sfs = list(sf_data['doc-sfs'][doc_id])
+      sfs.sort()
+      sf_data['doc-sfs'][doc_id] = sfs
+    for cofereference in sf_data['sf-docs'].keys():
+      docs = list(sf_data['sf-docs'][cofereference])
+      docs.sort()
+      sf_data['sf-docs'][cofereference] = docs
+    fp = codecs.open(path, 'w', 'UTF-8')
+    simplejson.dump(sf_data, fp, indent=4)
+    fp.close()
     finish = time.time()
     print '\ttook %0.3f s' % (finish-start)
   else:
-    print "KB surface list appears to be up-to-date."
+    print "Surface form data appears to be up-to-date."
 
 def extract_topic_features(output_directory, documents , dictionary, model, tolerance):
   '''
@@ -125,15 +157,18 @@ def extract_topic_features(output_directory, documents , dictionary, model, tole
   print "\t- topic features."
   corpus = SimpleCorpus(documents , dictionary)
   ndocs = len(documents)
-  feature_data = {'number-of-documents':ndocs, 'topics':{}}
+  #feature_data = {'number-of-documents':ndocs, 'topics':{}}
   map = {}
   for document in model[corpus]:
     for topic, weight in document: 
       if weight > tolerance:
-        if not topic in map: map[topic] = []
-        map[topic].append(weight)
-  for key in map.keys(): map[key] = sorted(map[key], key=lambda x: -x)
-  data = {'number-of-documents':ndocs, 'topics':map}
+        if not topic in map: map[topic] = 0.0
+        #map[topic].append(weight)
+        map[topic] += weight
+  #for key in map.keys(): map[key] = sorted(map[key], key=lambda x: -x)
+  data = []
+  for key in map.keys(): data.append({"topicid":key, "score":map[key] / ndocs})
+  #data = {'number-of-documents':ndocs, 'topics':map}
   fp = codecs.open("%s/features-topics.json" % output_directory, 'w', 'UTF-8')
   simplejson.dump(data, fp, indent=4)
   fp.close()
@@ -145,6 +180,7 @@ def extract_entity_features(output_directory, f='Proximity_AllCollapsedContext_J
   Extracts and stores entity features from the given file.
   '''
   print "\t- entity features."
+  label = output_directory.split('/')[-1]
   surface_form_pattern = "|".join(surface_forms)
   surface_form_re = re.compile(surface_form_pattern, re.IGNORECASE)
   mentions_path = '%s/%s' % (output_directory, f)
@@ -155,8 +191,9 @@ def extract_entity_features(output_directory, f='Proximity_AllCollapsedContext_J
     line = line.strip()
     if line:
       if finished_doc: 
-        #doc_id, path = line.split(":")
-        #doc_id = doc_id.strip()
+        doc_id, path = line.split(":")
+        doc_id = doc_id.strip()
+        doc_id = "%s::%s" % (label,doc_id)
         #path = path.strip()[1:-1]
         #doc_name = path.split('/')[-1]
         finished_doc = False
@@ -165,7 +202,7 @@ def extract_entity_features(output_directory, f='Proximity_AllCollapsedContext_J
         sf = data[0].split(':')[0]
         if surface_form_re.search(sf): 
           for item in data[1:-1]:
-            fs = FeatureSet(item)
+            fs = FeatureSet(doc_id, item)
             if not surface_form_re.search(fs.entity.phrase): features.append(fs.to_dict())
     else: 
       finished_doc = True
@@ -179,7 +216,7 @@ def extract_keyphrase_features(output_directory, documents, max_keyphrases, upda
   '''
   path = "%s/features-keyphrases.json" % output_directory
   if update or not os.path.exists(path):
-    print "\t- updating keyphrase features."
+    print "\t- keyphrase features."
     ndocs = len(documents)
     map = {}
     for document in documents:
@@ -187,7 +224,9 @@ def extract_keyphrase_features(output_directory, documents, max_keyphrases, upda
       for keyphrase in keyphrases:
         if not keyphrase in map: map[keyphrase] = 0
         map[keyphrase] += 1
-    data = {'number-of-documents':ndocs, 'keyphrases':map}
+    #data = {'number-of-documents':ndocs, 'keyphrases':map}
+    data = []
+    for key, value in map.iteritems(): data.append({"keyphrase":key, "score":value})
     fp = codecs.open(path, 'w', 'UTF-8')
     simplejson.dump(data, fp, indent=4)
     fp.close()
@@ -223,6 +262,7 @@ def extract_entity_kb_data(home, config, opts, doc_dictionary, doc_model, entity
   # keyphrase features
   max_keyphrases= config.getint('keyphrase','max-keyphrases')
   extract_keyphrase_features(target_directory, documents, max_keyphrases, opts.update_keyphrase_features)
+  #extract_keyphrase_features(target_directory, documents, max_keyphrases, True)
   # entity features
   #extract_entity_features(target_directory, f='Proximity_AllCollapsedContext_JS', surface_forms = ['Smith', '^John$'])
   extract_entity_features(target_directory)
@@ -259,5 +299,6 @@ if __name__ == "__main__":
   build_context_vector_space_model(home, config, update=opts.update_vector_model)
   # Extract features
   if not opts.skip_extracting_kb_data: extract_kb_data(home, config, opts)
+  #extract_kb_data(home, config, opts)
   # Collect surface forms
   collect_surface_form_data(home, config, update=opts.update_surface_form_data)
