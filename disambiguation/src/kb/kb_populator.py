@@ -12,7 +12,7 @@ for example:
 Available options are:
   
     -k          Update keyphrase features
-    -s          Update surface form data
+    -c          Update coreference data
     -t          Update document topic model
     -v          Update context vector space model
 
@@ -87,12 +87,11 @@ def build_context_vector_space_model(home, config, update=False):
   else:
     print "Ambient context vector space model appears to be up-to-date."
 
-def collect_entity_surface_form_data(directory, sf_data):
+def collect_entity_coference_data(directory, sf_data):
   '''
   Collects and stores all surface forms appearing in feature entity kb files.
   '''
   path = "%s/features-entities.json" % directory
-  print path
   fp = codecs.open(path, 'r', 'UTF-8')
   data = simplejson.load(fp)
   doc_ids = set()
@@ -114,40 +113,40 @@ def collect_entity_surface_form_data(directory, sf_data):
       sf_data['sf-docs'][cofereference].add(sf_data['doc-index-map'][doc_id])
   fp.close()
   ndocs = len(list(doc_ids))
-  print "\t%d" % ndocs
   return ndocs
 
-def collect_surface_form_data(home, config, update=False):
+def collect_coference_data(home, config, update=False):
   '''
   Collects and stores surface form for all specified (with a search pattern) entities.
   '''
-  path = '%s/output/entity/surface-form-data.txt' % home
-  #if update or not os.path.exists(path):
-  if True:
-    print "Collecting and storing KB surface forms."
-    start = time.time()
-    sf_data = {'next-sf-index':0, 'sf-index-map':{}, 'next-doc-index':0, 'doc-index-map':{}, 'doc-sfs':{}, 'sf-docs':{}}
-    # process all entities
-    search_pattern = "%s/output/entity/%s" % (home, config.get('surface-form','search-pattern'))
-    ndocs = 0
-    for directory in glob.glob(search_pattern):
-      ndocs += collect_entity_surface_form_data(directory, sf_data)  
-    print "ndocs: %d" % ndocs
-    for doc_id in sf_data['doc-sfs'].keys():
-      sfs = list(sf_data['doc-sfs'][doc_id])
-      sfs.sort()
-      sf_data['doc-sfs'][doc_id] = sfs
-    for cofereference in sf_data['sf-docs'].keys():
-      docs = list(sf_data['sf-docs'][cofereference])
-      docs.sort()
-      sf_data['sf-docs'][cofereference] = docs
-    fp = codecs.open(path, 'w', 'UTF-8')
-    simplejson.dump(sf_data, fp, indent=4)
-    fp.close()
-    finish = time.time()
-    print '\ttook %0.3f s' % (finish-start)
-  else:
-    print "Surface form data appears to be up-to-date."
+  entity_groups = config.get('coreference','entity-groups').split(',')
+  for g in entity_groups:
+    d = "%s/output/entity/%s" % (home, g)
+    path = '%s/coreference-data.txt' % d 
+    if update or not os.path.exists(path):
+      print "Collecting and storing KB coreference data for %s." % g
+      start = time.time()
+      sf_data = {'next-sf-index':0, 'sf-index-map':{}, 'next-doc-index':0, 'doc-index-map':{}, 'doc-sfs':{}, 'sf-docs':{}}
+      ndocs = 0
+      for subd in os.listdir(d):
+       full_path = "%s/%s" % (d, subd)
+       if os.path.isdir(full_path): ndocs += collect_entity_coference_data(full_path, sf_data)
+      print "ndocs: %d" % ndocs
+      for doc_id in sf_data['doc-sfs'].keys():
+        sfs = list(sf_data['doc-sfs'][doc_id])
+        sfs.sort()
+        sf_data['doc-sfs'][doc_id] = sfs
+      for cofereference in sf_data['sf-docs'].keys():
+        docs = list(sf_data['sf-docs'][cofereference])
+        docs.sort()
+        sf_data['sf-docs'][cofereference] = docs
+      fp = codecs.open(path, 'w', 'UTF-8')
+      simplejson.dump(sf_data, fp, indent=4)
+      fp.close()
+      finish = time.time()
+      print '\ttook %0.3f s' % (finish-start)
+    else:
+      print "Coreference data appears to be up-to-date."
 
 def extract_topic_features(output_directory, documents , dictionary, model, tolerance):
   '''
@@ -175,14 +174,12 @@ def extract_topic_features(output_directory, documents , dictionary, model, tole
 
 from data.domain import FeatureSet
 import re
-def extract_entity_features(output_directory, f='Proximity_AllCollapsedContext_JS', surface_forms = ['Smith', '^John$']):
+def extract_entity_features(output_directory, surface_form_re, f='Proximity_AllCollapsedContext_JS'):
   '''
   Extracts and stores entity features from the given file.
   '''
   print "\t- entity features."
   label = output_directory.split('/')[-1]
-  surface_form_pattern = "|".join(surface_forms)
-  surface_form_re = re.compile(surface_form_pattern, re.IGNORECASE)
   mentions_path = '%s/%s' % (output_directory, f)
   mentions_data = codecs.open(mentions_path, 'r', 'UTF-8').readlines()
   features = []
@@ -245,16 +242,18 @@ class SimpleCorpus(object):
       tokens = sum(tokenized_sentences, [])
       yield self.dictionary.doc2bow(tokens)
 
-def extract_entity_kb_data(home, config, opts, doc_dictionary, doc_model, entity):
-  print " ->> Extracting features for entity %s." % entity
+def extract_entity_kb_data(home, config, opts, doc_dictionary, doc_model, group, directory, default_surface_form_re):
+  print " ->> Extracting features from directory ~%s/%s." % (group, directory)
+  #surface_form_re = get_surface_forms("%s/corpus/entity/%s/%s" % (home, group, directory), default_surface_form_re)
+  surface_form_re = get_surface_forms("%s/output/entity/%s/%s" % (home, group, directory), default_surface_form_re)
   kb_entry = {}
   output_directory = "%s/output" % home
-  target_directory = "%s/entity/%s" % (output_directory, entity)
+  target_directory = "%s/entity/%s/%s" % (output_directory, group, directory)
   if not os.path.exists(target_directory): os.makedirs(target_directory)
   # get entity documents
-  path = "%s/corpus/entity/%s" % (home, entity)
+  path = "%s/Normalized_JS" % target_directory
   documents = []
-  for d in [f for f in os.listdir(path) if '.' in f]:
+  for d in [f for f in os.listdir(path) if f.endswith("_NORM")]:
     documents.append(codecs.open("%s/%s" % (path, d), 'r', 'UTF-8').read())
   # topic features
   tolerance = config.getfloat('document-topic-model','feature-tolerance')
@@ -265,7 +264,7 @@ def extract_entity_kb_data(home, config, opts, doc_dictionary, doc_model, entity
   #extract_keyphrase_features(target_directory, documents, max_keyphrases, True)
   # entity features
   #extract_entity_features(target_directory, f='Proximity_AllCollapsedContext_JS', surface_forms = ['Smith', '^John$'])
-  extract_entity_features(target_directory)
+  extract_entity_features(target_directory, surface_form_re)
 
 def extract_kb_data(home, config, opts):
   print "Extracting features."
@@ -273,9 +272,26 @@ def extract_kb_data(home, config, opts):
   doc_dictionary = corpora.Dictionary.load('%s/ambient-document.dict' % output_directory)
   doc_model = models.ldamodel.LdaModel.load('%s/ambient-document.lda' % output_directory)
   # process all entities
-  search_pattern = "%s/corpus/entity/%s" % (home, config.get('main','search-pattern'))
-  for d in glob.glob(search_pattern):
-    extract_entity_kb_data(home, config, opts, doc_dictionary, doc_model, d.split('/')[-1])
+  entity_groups = config.get('main','entity-groups').split(',')
+  for g in entity_groups:
+   path = "%s/corpus/entity/%s" % (home, g)
+   default_surface_form_re = get_surface_forms(path)
+   for d in os.listdir(path):
+     full_path = "%s/%s" % (path, d)
+     if os.path.isdir(full_path):
+       extract_entity_kb_data(home, config, opts, doc_dictionary, doc_model, g, d, default_surface_form_re)
+
+def get_surface_forms(path, default_surface_form_re=None):
+  path = "%s/surface-form.txt" % path
+  if os.path.exists(path):
+    fp = codecs.open(path, 'r', 'UTF-8')
+    surface_forms = []
+    for line in fp: surface_forms.append(line.strip())
+    fp.close()
+    surface_form_pattern = "|".join(surface_forms)
+    surface_form_re = re.compile(surface_form_pattern, re.IGNORECASE)
+  else: surface_form_re = default_surface_form_re
+  return surface_form_re
 
 if __name__ == "__main__":
   # Parse command-line options.
@@ -283,7 +299,7 @@ if __name__ == "__main__":
 
   parser.add_option("-b", help="Skip extracting KB data", dest='skip_extracting_kb_data', default=False, action='store_true')
   parser.add_option("-k", help="Update keyphrase features", dest='update_keyphrase_features', default=False, action='store_true')
-  parser.add_option("-s", help="Update surface form data", dest='update_surface_form_data', default=False, action='store_true')
+  parser.add_option("-c", help="Update coference data", dest='update_coference_data', default=False, action='store_true')
   parser.add_option("-t", help="Update document topic model", dest='update_topic_model', default=False, action='store_true')
   parser.add_option("-v", help="Update context vector space model", dest='update_vector_model', default=False, action='store_true')
   (opts, args) = parser.parse_args()
@@ -299,6 +315,5 @@ if __name__ == "__main__":
   build_context_vector_space_model(home, config, update=opts.update_vector_model)
   # Extract features
   if not opts.skip_extracting_kb_data: extract_kb_data(home, config, opts)
-  #extract_kb_data(home, config, opts)
-  # Collect surface forms
-  collect_surface_form_data(home, config, update=opts.update_surface_form_data)
+  # Collect coference data
+  collect_coference_data(home, config, update=opts.update_coference_data)
