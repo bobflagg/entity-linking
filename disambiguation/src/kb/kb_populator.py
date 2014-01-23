@@ -243,7 +243,7 @@ class SimpleCorpus(object):
       yield self.dictionary.doc2bow(tokens)
 
 def extract_entity_kb_data(home, config, opts, doc_dictionary, doc_model, group, directory, default_surface_form_re):
-  print " ->> Extracting features from directory ~%s/%s." % (group, directory)
+  print " ->> Extracting features from directory ~/%s/%s." % (group, directory)
   #surface_form_re = get_surface_forms("%s/corpus/entity/%s/%s" % (home, group, directory), default_surface_form_re)
   surface_form_re = get_surface_forms("%s/output/entity/%s/%s" % (home, group, directory), default_surface_form_re)
   kb_entry = {}
@@ -276,6 +276,7 @@ def extract_kb_data(home, config, opts):
   for g in entity_groups:
    path = "%s/corpus/entity/%s" % (home, g)
    default_surface_form_re = get_surface_forms(path)
+   path = "%s/output/entity/%s" % (home, g)
    for d in os.listdir(path):
      full_path = "%s/%s" % (path, d)
      if os.path.isdir(full_path):
