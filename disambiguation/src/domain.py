@@ -91,7 +91,7 @@ class Mention(object):
         return self.info[index]
 
 class Topic(object):
-  def __init__(self, index, model, n_top=3):
+  def __init__(self, index, model, n_top=6):
     self.index = index
     self.words = []
     self.probs = []

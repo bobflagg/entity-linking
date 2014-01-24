@@ -27,8 +27,9 @@ so all the John Smith directories are processed.
 '''
 import codecs
 import ConfigParser
-from data.corpus_builder import DirectoryBackedCorpus
+from data.corpus_builder import DirectoryBackedCorpus, LabeledCorpus
 from data.domain import SUBTYPES
+from domain import Topic
 from gensim import corpora, models
 import glob
 import json as simplejson
@@ -62,6 +63,30 @@ def build_document_topic_model(home, config, update=False):
     print '\ttook %0.3f s' % (finish-start)
   else:
     print "Ambient document topic model appears to be up-to-date."
+
+def build_group_topic_model(home, config, g, update=False):
+  '''
+  Builds and stores an LDA topic model for the group document corpus.
+  '''
+  path = '%s/output/entity/%s/document.lda' % (home, g)
+  if update or not os.path.exists(path):
+    print "Building and storing group topic model."
+    start = time.time()
+    corpus_path = "%s/corpus/entity/%s" % (home, g)
+    description = "group topic model"
+    no_below = config.getint('document-topic-model','no-below')
+    no_above = config.getfloat('document-topic-model','no-above')
+    corpus = LabeledCorpus(corpus_path, description, no_below=no_below, no_above=no_above)
+    corpus.initialize_dictionary()
+    corpus.dictionary.save('%s/output/entity/%s/document.dict' % (home, g))
+    corpora.MmCorpus.serialize('%s/output/entity/%s/document.mm' % (home, g), corpus)
+    num_topics = config.getint('document-topic-model','num-topics')
+    lda = models.ldamodel.LdaModel(corpus, id2word=corpus.dictionary, num_topics=num_topics, passes=12)
+    lda.save(path)
+    finish = time.time()
+    print '\ttook %0.3f s' % (finish-start)
+  else:
+    print "Group topic model appears to be up-to-date."
 
 def build_context_vector_space_model(home, config, update=False):
   '''
@@ -119,18 +144,18 @@ def collect_coference_data(home, config, update=False):
   '''
   Collects and stores surface form for all specified (with a search pattern) entities.
   '''
-  entity_groups = config.get('coreference','entity-groups').split(',')
+  entity_groups = config.get('main','entity-groups').split(',')
   for g in entity_groups:
     d = "%s/output/entity/%s" % (home, g)
     path = '%s/coreference-data.txt' % d 
     if update or not os.path.exists(path):
       print "Collecting and storing KB coreference data for %s." % g
       start = time.time()
-      sf_data = {'next-sf-index':0, 'sf-index-map':{}, 'next-doc-index':0, 'doc-index-map':{}, 'doc-sfs':{}, 'sf-docs':{}}
+      sf_data = {'next-sf-index':0, 'sf-index-map':{}, 'next-doc-index':0, 'doc-index-map':{}, 'doc-sfs':{}, 'doc-topics':{}, 'sf-docs':{}}
       ndocs = 0
       for subd in os.listdir(d):
-       full_path = "%s/%s" % (d, subd)
-       if os.path.isdir(full_path): ndocs += collect_entity_coference_data(full_path, sf_data)
+        full_path = "%s/%s" % (d, subd)
+        if os.path.isdir(full_path): ndocs += collect_entity_coference_data(full_path, sf_data)
       print "ndocs: %d" % ndocs
       for doc_id in sf_data['doc-sfs'].keys():
         sfs = list(sf_data['doc-sfs'][doc_id])
@@ -251,13 +276,10 @@ def extract_entity_kb_data(home, config, opts, doc_dictionary, doc_model, group,
   target_directory = "%s/entity/%s/%s" % (output_directory, group, directory)
   if not os.path.exists(target_directory): os.makedirs(target_directory)
   # get entity documents
-  path = "%s/Normalized_JS" % target_directory
-  documents = []
-  for d in [f for f in os.listdir(path) if f.endswith("_NORM")]:
-    documents.append(codecs.open("%s/%s" % (path, d), 'r', 'UTF-8').read())
+  _, documents = get_documents(target_directory)
   # topic features
   tolerance = config.getfloat('document-topic-model','feature-tolerance')
-  extract_topic_features(target_directory, documents , doc_dictionary, doc_model, tolerance)
+  extract_topic_features(target_directory, documents, doc_dictionary, doc_model, tolerance)
   # keyphrase features
   max_keyphrases= config.getint('keyphrase','max-keyphrases')
   extract_keyphrase_features(target_directory, documents, max_keyphrases, opts.update_keyphrase_features)
@@ -266,6 +288,15 @@ def extract_entity_kb_data(home, config, opts, doc_dictionary, doc_model, group,
   #extract_entity_features(target_directory, f='Proximity_AllCollapsedContext_JS', surface_forms = ['Smith', '^John$'])
   extract_entity_features(target_directory, surface_form_re)
 
+def get_documents(target_directory):
+  path = "%s/Normalized_JS" % target_directory
+  ids = []
+  documents = []
+  for d in [f for f in os.listdir(path) if f.endswith("_NORM")]:
+    ids.append(d)
+    documents.append(codecs.open("%s/%s" % (path, d), 'r', 'UTF-8').read())
+  return ids, documents
+  
 def extract_kb_data(home, config, opts):
   print "Extracting features."
   output_directory = "%s/output" % home
@@ -274,13 +305,60 @@ def extract_kb_data(home, config, opts):
   # process all entities
   entity_groups = config.get('main','entity-groups').split(',')
   for g in entity_groups:
-   path = "%s/corpus/entity/%s" % (home, g)
-   default_surface_form_re = get_surface_forms(path)
-   path = "%s/output/entity/%s" % (home, g)
-   for d in os.listdir(path):
-     full_path = "%s/%s" % (path, d)
-     if os.path.isdir(full_path):
-       extract_entity_kb_data(home, config, opts, doc_dictionary, doc_model, g, d, default_surface_form_re)
+    path = "%s/corpus/entity/%s" % (home, g)
+    default_surface_form_re = get_surface_forms(path)
+    path = "%s/output/entity/%s" % (home, g)
+    for d in os.listdir(path):
+      full_path = "%s/%s" % (path, d)
+      if os.path.isdir(full_path):
+        extract_entity_kb_data(home, config, opts, doc_dictionary, doc_model, g, d, default_surface_form_re)
+  
+def collect_topic_data(home, config, opts):
+  output_directory = "%s/output" % home
+  #dictionary = corpora.Dictionary.load('%s/ambient-document.dict' % output_directory)
+  #model = models.ldamodel.LdaModel.load('%s/ambient-document.lda' % output_directory)
+  entity_groups = config.get('main','entity-groups').split(',')
+  for g in entity_groups:
+    dictionary = corpora.Dictionary.load('%s/entity/%s/document.dict' % (output_directory,g))
+    model = models.ldamodel.LdaModel.load('%s/entity/%s/document.lda' % (output_directory,g))
+    path = "%s/output/entity/%s/topic-data.json" % (home, g) 
+    if opts.update_topic_data or not os.path.exists(path):
+      print "Collecting topic data for group %s." % g
+      start = time.time()
+      topic_data = {
+          'number-of-topics':model.num_topics,
+          'topic_description':{},
+          'document_topics':{}
+      }
+      directory = "%s/output/entity/%s" % (home, g)
+      for d in os.listdir(directory):
+        full_path = "%s/%s" % (directory, d)
+        if os.path.isdir(full_path):
+          collect_group_topic_data(home, dictionary, model, g, d, topic_data)
+      fp = codecs.open(path, 'w', 'UTF-8')
+      simplejson.dump(topic_data, fp, indent=4)
+      fp.close()
+      finish = time.time()
+      print '\ttook %0.3f s' % (finish-start)
+    else:
+      print "Topic data appears to be up-to-date."
+
+def collect_group_topic_data(home, dictionary, model, g, d, topic_data):
+  '''
+  Collects and stores topic data for the entity corresponding to the given sub-directory and
+  group.
+  '''
+  target_directory = "%s/output/entity/%s/%s" % (home, g, d)
+  ids, documents = get_documents(target_directory)
+  corpus = SimpleCorpus(documents, dictionary)
+  map = {}
+  for index, document in enumerate(model[corpus]):
+    for t, _ in document:
+      if not t in topic_data['topic_description']: 
+        topic = Topic(t, model)
+        topic_data['topic_description'][t] = "%s" % topic
+    map[ids[index]] = [(t, w, topic_data['topic_description'][t]) for t, w in document]
+  topic_data['document_topics'][d] = map 
 
 def get_surface_forms(path, default_surface_form_re=None):
   path = "%s/surface-form.txt" % path
@@ -300,9 +378,10 @@ if __name__ == "__main__":
 
   parser.add_option("-b", help="Skip extracting KB data", dest='skip_extracting_kb_data', default=False, action='store_true')
   parser.add_option("-k", help="Update keyphrase features", dest='update_keyphrase_features', default=False, action='store_true')
-  parser.add_option("-c", help="Update coference data", dest='update_coference_data', default=False, action='store_true')
+  parser.add_option("-c", help="Update coreference data", dest='update_coreference_data', default=False, action='store_true')
   parser.add_option("-t", help="Update document topic model", dest='update_topic_model', default=False, action='store_true')
   parser.add_option("-v", help="Update context vector space model", dest='update_vector_model', default=False, action='store_true')
+  parser.add_option("-x", help="Update topic data", dest='update_topic_data', default=False, action='store_true')
   (opts, args) = parser.parse_args()
   # Read configuration info:
   if len(args) == 1: config_path = args[0]
@@ -312,9 +391,12 @@ if __name__ == "__main__":
   home = config.get('main','home')
   # Build ambient document corpus topic model
   build_document_topic_model(home, config, update=opts.update_topic_model)
+  build_group_topic_model(home, config, "js", update=True)
   # Build ambient context corpus vector space model
   build_context_vector_space_model(home, config, update=opts.update_vector_model)
   # Extract features
   if not opts.skip_extracting_kb_data: extract_kb_data(home, config, opts)
   # Collect coference data
-  collect_coference_data(home, config, update=opts.update_coference_data)
+  collect_coference_data(home, config, update=opts.update_coreference_data)  
+  # Collect topic data
+  collect_topic_data(home, config, opts)
