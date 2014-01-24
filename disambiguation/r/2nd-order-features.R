@@ -1,5 +1,54 @@
+library("tsne")
+
+setwd("/home/disambiguation/data/")
+data <- read.csv("data-58.csv", header = FALSE) # str(data)
+labels <- read.csv("labels.csv", header = FALSE)
+info <- read.csv("info.csv", header = FALSE)
+tags <- as.character(info[,4])
+names(labels) = c("class")
+
+n.clusters <- nrow(unique(labels))
+ll <- labels$class # str(ll)
+ll.ac <- as.character(ll) # str(ll.ac)
+colors <- rainbow(length(unique(ll.ac)))
+names(colors) = unique(ll.ac)
+pchs <- unique(ll) %% 16 + 1
+names(pchs) = unique(ll.ac)
+
+ecb = function(x,y){ plot(x, col=colors[ll.ac]);}
+sne<-tsne(data, epoch_callback=ecb, perplexity=16)
+sne<-tsne(data, perplexity=16)
+sne.df <- as.data.frame(sne)
+lim <-200
+ShowLabels <- function(label) {
+  n <- nrow(labels)
+  indices <- (1:n)[ll == label]
+  #text(sne.df[indices,], labels=ll[indices], col=colors[ll.ac[indices]],pch=pchs[ll.ac[indices]], cex=.7)
+  text(sne.df[indices,], labels=tags[indices], col=colors[ll.ac[indices]],pch=pchs[ll.ac[indices]], cex=.6)
+}
+plot(sne ,t='n', xlim=c(-lim,lim), ylim=c(-lim,lim))
+ShowLabels(1)
+ShowLabels(13)
+ShowLabels(15)
+ShowLabels(0)
+ShowLabels(4)
+ShowLabels(1)
+ShowLabels(24)
+ShowLabels(31)
+ShowLabels(27)
+ShowLabels(21)
+ShowLabels(16)
+plot(sne, main="2nd-order Features", xlab="x", ylab="y", col=colors[ll.ac], xlim=c(-lim,lim), ylim=c(-lim,lim))
+plot(sne ,t='n', xlim=c(-lim,lim), ylim=c(-lim,lim))
+text(sne.df, labels=ll, col=colors[ll.ac],cex=.7)
+
+
+ll.ac <- as.character(ll)
+plot(sne.df,col=colors[ll.ac],pch=pchs[ll],xlim=c(-lim,lim), ylim=c(-lim,lim))
+plot(sne ,t='n',xlim=c(-150,160), ylim=c(-160,180))
+text(sne.df, labels=ll.ac, col=colors[ll.ac], cex=.8)
+
 setwd("/tmp/")
-data <- read.csv("data-58.csv", header = FALSE)
 Y <- read.csv("Y.csv", header = FALSE)
 data.2nd <- cbind(data,Y)
 str(data)
@@ -45,7 +94,7 @@ ShowLabels <- function(label) {
 }
 ll.ac <- as.character(ll)
 plot(sne.df,col=colors[ll.ac],pch=pchs[ll],xlim=c(-lim,lim), ylim=c(-lim,lim))
-plot(sne ,t='n',xlim=c(-lim,lim), ylim=c(-lim,lim))
+plot(sne ,t='n',xlim=c(-150,160), ylim=c(-160,180))
 text(sne.df, labels=ll.ac, col=colors[ll.ac], cex=.8)
 ShowLabels(30)
 ShowLabels(0)
