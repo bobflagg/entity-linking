@@ -2,7 +2,7 @@ import codecs
 from gensim import corpora
 from nltk.tokenize import sent_tokenize, word_tokenize
 from nltk.corpus import stopwords
-from os.path import join
+from os.path import isdir, join
 from os import listdir
 
 class Document(object):
@@ -192,9 +192,10 @@ class LabeledCorpus(DirectoryBackedCorpus):
     self.path = path
     self.documents = []
     for d in sorted(listdir(path)):
-	directory = join(path, d)
-	for f in sorted(listdir(directory)):
-      		self.documents.append(FileBackedLabeledDocument(f, join(directory , f), d, store_content))
+      directory = join(path, d)
+      if isdir(directory):
+        for f in sorted(listdir(directory)):
+          self.documents.append(FileBackedLabeledDocument(f, join(directory , f), d, store_content))
   
 def build_discrimination_corpus(path, form):
   corpus = LabeledCorpus(path, "%s corpus" % form, store_content=True)	
