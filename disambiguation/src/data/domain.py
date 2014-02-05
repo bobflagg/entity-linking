@@ -49,8 +49,9 @@ class Mention(object):
   
 class FeatureSet(object):
   
-  def __init__(self, doc_id, item_data): # u'PERSON:Brent Cann:0.777777777778:1'
+  def __init__(self, doc_id, occurrence, item_data): # u'PERSON:Brent Cann:0.777777777778:1'
     self.doc_id = doc_id
+    self.occurrence = int(occurrence)
     subtype, phrase, proximity, freq = item_data.split(':')
     self.entity = Entity.get_entity(subtype, phrase)
     self.subtype = self.entity.subtype
@@ -65,7 +66,7 @@ class FeatureSet(object):
     return "p:%d:%.2f\tc:%d:%d" % (index, self.proximity, index, self.freq)
     
   def to_dict(self):
-    return {'doc_id':self.doc_id, 'subtype':self.subtype, 'entity':self.entity.phrase, 'proximity':round(self.proximity,3), 'frequency':self.freq}
+    return {'doc_id':self.doc_id, 'occurrence':self.occurrence, 'subtype':self.subtype, 'entity':self.entity.phrase, 'proximity':round(self.proximity,3), 'frequency':self.freq}
      
   def __str__(self):
     return unicode(self).encode('utf-8')

@@ -119,30 +119,34 @@ def collect_entity_coference_data(directory, sf_data):
   path = "%s/features-entities.json" % directory
   fp = codecs.open(path, 'r', 'UTF-8')
   data = simplejson.load(fp)
-  doc_ids = set()
+  mention_ids = set()
   for item in data:
     subtype = item['subtype']
     doc_id = item['doc_id']
-    doc_ids.add(doc_id) 
-    if not doc_id in sf_data['doc-sfs']: 
-      sf_data['doc-sfs'][doc_id] = set()
-      sf_data['doc-index-map'][doc_id] = sf_data['next-doc-index']
-      sf_data['next-doc-index'] += 1
+    occurrence = item['occurrence']
+    mention_id = "%s::%d" % (doc_id, occurrence)
+    proximity = item['proximity']
+    frequency = item['frequency']
+    mention_ids.add(mention_id) 
+    if not mention_id in sf_data['mention-sfs']: 
+      sf_data['mention-sfs'][mention_id] = set()
+      sf_data['mention-index-map'][mention_id] = sf_data['next-mention-index']
+      sf_data['next-mention-index'] += 1
     if subtype in SUBTYPES: 
       cofereference = "%s::%s" % (subtype, item['entity'])
       if not cofereference in sf_data['sf-index-map']: 
-        sf_data['sf-docs'][cofereference] = set()
+        sf_data['sf-mentions'][cofereference] = set()
         sf_data['sf-index-map'][cofereference] = sf_data['next-sf-index']
         sf_data['next-sf-index'] += 1
-      sf_data['doc-sfs'][doc_id].add(sf_data['sf-index-map'][cofereference])
-      sf_data['sf-docs'][cofereference].add(sf_data['doc-index-map'][doc_id])
+      sf_data['mention-sfs'][mention_id].add((sf_data['sf-index-map'][cofereference], proximity, frequency))
+      sf_data['sf-mentions'][cofereference].add(sf_data['mention-index-map'][mention_id])
   fp.close()
-  ndocs = len(list(doc_ids))
-  return ndocs
+  nmentions = len(list(mention_ids))
+  return nmentions
 
 def collect_coference_data(home, config, update=False):
   '''
-  Collects and stores surface form for all specified (with a search pattern) entities.
+  Collects and stores entity coreference data.
   '''
   entity_groups = config.get('main','entity-groups').split(',')
   for g in entity_groups:
@@ -151,20 +155,20 @@ def collect_coference_data(home, config, update=False):
     if update or not os.path.exists(path):
       print "Collecting and storing KB coreference data for %s." % g
       start = time.time()
-      sf_data = {'next-sf-index':0, 'sf-index-map':{}, 'next-doc-index':0, 'doc-index-map':{}, 'doc-sfs':{}, 'doc-topics':{}, 'sf-docs':{}}
-      ndocs = 0
+      sf_data = {'next-sf-index':0, 'sf-index-map':{}, 'next-mention-index':0, 'mention-index-map':{}, 'mention-sfs':{}, 'sf-mentions':{}}
+      nmentions = 0
       for subd in os.listdir(d):
         full_path = "%s/%s" % (d, subd)
-        if os.path.isdir(full_path): ndocs += collect_entity_coference_data(full_path, sf_data)
-      print "ndocs: %d" % ndocs
-      for doc_id in sf_data['doc-sfs'].keys():
-        sfs = list(sf_data['doc-sfs'][doc_id])
+        if os.path.isdir(full_path): nmentions += collect_entity_coference_data(full_path, sf_data)
+      print "nmentions: %d" % nmentions
+      for mention_id in sf_data['mention-sfs'].keys():
+        sfs = list(sf_data['mention-sfs'][mention_id])
         sfs.sort()
-        sf_data['doc-sfs'][doc_id] = sfs
-      for cofereference in sf_data['sf-docs'].keys():
-        docs = list(sf_data['sf-docs'][cofereference])
+        sf_data['mention-sfs'][mention_id] = sfs
+      for cofereference in sf_data['sf-mentions'].keys():
+        docs = list(sf_data['sf-mentions'][cofereference])
         docs.sort()
-        sf_data['sf-docs'][cofereference] = docs
+        sf_data['sf-mentions'][cofereference] = docs
       fp = codecs.open(path, 'w', 'UTF-8')
       simplejson.dump(sf_data, fp, indent=4)
       fp.close()
@@ -209,6 +213,7 @@ def extract_entity_features(output_directory, surface_form_re, f='Proximity_AllC
   mentions_data = codecs.open(mentions_path, 'r', 'UTF-8').readlines()
   features = []
   finished_doc = True
+  occurrence = 0
   for line in mentions_data: 
     line = line.strip()
     if line:
@@ -219,12 +224,14 @@ def extract_entity_features(output_directory, surface_form_re, f='Proximity_AllC
         #path = path.strip()[1:-1]
         #doc_name = path.split('/')[-1]
         finished_doc = False
-      else:
+        occurrence = 0
+      else:        
         data = line.split('\t')
         sf = data[0].split(':')[0]
         if surface_form_re.search(sf): 
+          occurrence += 1
           for item in data[1:-1]:
-            fs = FeatureSet(doc_id, item)
+            fs = FeatureSet(doc_id, occurrence, item)
             if not surface_form_re.search(fs.entity.phrase): features.append(fs.to_dict())
     else: 
       finished_doc = True
@@ -391,7 +398,7 @@ if __name__ == "__main__":
   home = config.get('main','home')
   # Build ambient document corpus topic model
   build_document_topic_model(home, config, update=opts.update_topic_model)
-  build_group_topic_model(home, config, "js", update=True)
+  #build_group_topic_model(home, config, "js", update=True)
   # Build ambient context corpus vector space model
   build_context_vector_space_model(home, config, update=opts.update_vector_model)
   # Extract features
